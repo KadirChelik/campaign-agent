@@ -1,3 +1,5 @@
+import { buildResponsiveCss } from './responsiveCss.js';
+
 export const CONTAINER_IDS = Object.freeze({
   popup: 'ca-widget-popup-container',
   banner: 'ca-widget-banner-container',
@@ -155,11 +157,221 @@ function extractQuotedStrings(userRequest) {
   return results;
 }
 
+const TEMPLATE_TEXT_KEYS = [
+  'title',
+  'subtitle',
+  'description',
+  'ctaText',
+  'badgeText',
+  'couponCode',
+  'timerTitle',
+  'tabText',
+  'yesText',
+  'noText',
+  'placeholder',
+  'buttonText',
+  'message',
+  'code',
+  'image',
+  'desktopImage',
+  'mobileImage',
+  'desktopImg',
+  'mobileImg',
+  'ctaUrl',
+];
+
+const STYLE_REQUEST_REGEX =
+  /(renk|rengi|arkaplan|arka\s*plan|background|color|boyut|font|yaz[ıi]\s*tipi|yuvarla|radius|k[öo][şs]e|kenar|tema|koyu|a[çc][ıi]k|dark|light|siyah|beyaz|k[ıi]rm[ıi]z[ıi]|mavi|lacivert|ye[şs]il|mor|turuncu|pembe|sar[ıi]|alt[ıi]n|stil|style|tasar[ıi]m|ortala|hizala|geni[şs]lik|y[üu]kseklik|padding|margin|bo[şs]luk|kal[ıi]n|bold|#(?:[0-9a-fA-F]{3,6})\b)/i;
+
+function extractTemplateConfigStrings(code) {
+  const map = {};
+  if (typeof code !== 'string' || !code) return map;
+  const blockMatch = code.match(/TEMPLATE_CONFIG\s*=\s*\{([\s\S]*?)\};/);
+  if (!blockMatch) return map;
+  const block = blockMatch[1];
+
+  for (const key of TEMPLATE_TEXT_KEYS) {
+    const propRegex = new RegExp(`\\b${key}\\s*:\\s*(["'\`])((?:\\\\[\\s\\S]|(?!\\1)[^\\\\])*)\\1`);
+    const m = block.match(propRegex);
+    if (m) {
+      map[key] = m[2]
+        .replace(/\\"/g, '"')
+        .replace(/\\'/g, "'")
+        .replace(/\\`/g, '`')
+        .replace(/\\n/g, '\n');
+    }
+  }
+  return map;
+}
+
+function decodeHtmlEntities(str) {
+  return String(str || '')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
+function extractDataCaStyleMap(code) {
+  const result = new Map();
+  if (typeof code !== 'string' || !code) return result;
+
+  const tagRegex = /<[a-zA-Z0-9]+\b[^>]*\bdata-ca-styles=(['"])([\s\S]*?)\1[^>]*>/gi;
+  let match = tagRegex.exec(code);
+  while (match !== null) {
+    const fullTag = match[0];
+    const rawJson = decodeHtmlEntities(match[2]).trim();
+    const idMatch = fullTag.match(/\bid=(['"])([^'"]+)\1/i);
+    if (idMatch && rawJson.startsWith('{')) {
+      try {
+        result.set(idMatch[2], {
+          raw: rawJson,
+          parsed: JSON.parse(rawJson),
+        });
+      } catch {
+        // ignore malformed data-ca-styles JSON
+      }
+    }
+    match = tagRegex.exec(code);
+  }
+  return result;
+}
+
+function extractMainStyleBlock(code) {
+  if (typeof code !== 'string' || !code) return '';
+  const m = code.match(/style\.(?:innerHTML|textContent)\s*=\s*(['"`])([\s\S]*?)\1/);
+  return m ? m[2].trim() : '';
+}
+
+/**
+ * Reconciles AI-edited widget code against previous code so that:
+ * 1. Changes made to TEMPLATE_CONFIG fields also update baked literal HTML in container.innerHTML.
+ * 2. Stale visual-editor `!important` rules (`data-ca-styles` & `.ca-visual-edits`) do not block new AI style edits,
+ *    while any `data-ca-styles` explicitly updated by the AI are rebuilt into `.ca-visual-edits`.
+ */
+export function reconcileAiEditedCode(newCode, previousCode = '', userRequest = '') {
+  if (typeof newCode !== 'string' || !newCode.trim()) return newCode || '';
+  if (typeof previousCode !== 'string' || !previousCode.trim()) return newCode;
+
+  let code = newCode;
+
+  // 1. Sync TEMPLATE_CONFIG changes into baked literal container.innerHTML
+  const prevConfig = extractTemplateConfigStrings(previousCode);
+  const nextConfig = extractTemplateConfigStrings(code);
+
+  const innerHtmlRegex =
+    /\b(?!style\b)([a-zA-Z0-9_$]+\.innerHTML\s*=\s*)(['"`])((?:\\[\s\S]|(?!\2)[^\\])*)\2/g;
+  code = code.replace(innerHtmlRegex, (fullMatch, prefix, quote, body) => {
+    let innerBody = body;
+    let innerChanged = false;
+
+    for (const key of TEMPLATE_TEXT_KEYS) {
+      const oldVal = prevConfig[key];
+      const newVal = nextConfig[key];
+      if (
+        oldVal &&
+        newVal &&
+        oldVal !== newVal &&
+        oldVal.length >= 2 &&
+        innerBody.includes(oldVal) &&
+        !innerBody.includes(`TEMPLATE_CONFIG.${key}`)
+      ) {
+        innerBody = innerBody.split(oldVal).join(newVal);
+        innerChanged = true;
+      }
+    }
+
+    return innerChanged ? `${prefix}${quote}${innerBody}${quote}` : fullMatch;
+  });
+
+  // 2. Reconcile data-ca-styles and <style class="ca-visual-edits">
+  const hasVisualEditsInNew =
+    /data-ca-styles=/i.test(code) || /class=(['"])ca-visual-edits\1/i.test(code);
+
+  if (hasVisualEditsInNew) {
+    const prevStyleMap = extractDataCaStyleMap(previousCode);
+    const nextStyleMap = extractDataCaStyleMap(code);
+    const mainStyleChanged =
+      extractMainStyleBlock(code) !== extractMainStyleBlock(previousCode);
+    const styleRequested = STYLE_REQUEST_REGEX.test(userRequest || '');
+
+    const keptEntries = [];
+    for (const [id, info] of nextStyleMap.entries()) {
+      const prevInfo = prevStyleMap.get(id);
+      const isUnchangedFromPrev = prevInfo && prevInfo.raw === info.raw;
+      if (isUnchangedFromPrev && (mainStyleChanged || styleRequested)) {
+        // Strip stale unchanged data-ca-styles attribute for this element so new CSS rules take effect
+        const attrRegex = new RegExp(
+          `(<[^>]*\\bid=(['"])${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\2[^>]*?)\\s+data-ca-styles=(['"])[\\s\\S]*?\\3`,
+          'gi'
+        );
+        code = code.replace(attrRegex, '$1');
+        const attrBeforeIdRegex = new RegExp(
+          `(<[^>]*?)\\s+data-ca-styles=(['"])[\\s\\S]*?\\2([^>]*\\bid=(['"])${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\4)`,
+          'gi'
+        );
+        code = code.replace(attrBeforeIdRegex, '$1$3');
+      } else {
+        keptEntries.push({ id, styles: info.parsed });
+      }
+    }
+
+    const rebuiltVisualCss = buildResponsiveCss(keptEntries).trim();
+    const visualStyleTagRegex =
+      /<style\b[^>]*class=(['"])ca-visual-edits\1[^>]*>[\s\S]*?<\/style>\s*/gi;
+
+    if (rebuiltVisualCss) {
+      if (visualStyleTagRegex.test(code)) {
+        code = code.replace(
+          visualStyleTagRegex,
+          `<style class="ca-visual-edits">${rebuiltVisualCss}</style>`
+        );
+      }
+    } else {
+      code = code.replace(visualStyleTagRegex, '');
+    }
+  }
+
+  return code;
+}
+
+function extractNaturalFieldEdits(userRequest) {
+  const edits = {};
+  if (typeof userRequest !== 'string' || !userRequest.trim()) return edits;
+
+  const titleMatch = userRequest.match(
+    /ba[şs]l[ıi][ğg][ıi]\s+(?:["']([^"'\n]{2,90})["']|([^,.\n]{2,60}?))\s+(?:yap|olsun|olarak\s+de[ğg]i[şs]tir|yaz)/i
+  );
+  if (titleMatch) {
+    edits.title = (titleMatch[1] || titleMatch[2] || '').trim();
+  }
+
+  const ctaMatch = userRequest.match(
+    /(?:buton\s+yaz[ıi]s[ıi]n[ıi]|buton\s+metnini|butonu|cta\s+yaz[ıi]s[ıi]n[ıi])\s+(?:["']([^"'\n]{2,60})["']|([^,.\n]{2,40}?))\s+(?:yap|olsun|olarak\s+de[ğg]i[şs]tir|yaz)/i
+  );
+  if (ctaMatch) {
+    const candidate = (ctaMatch[1] || ctaMatch[2] || '').trim();
+    if (
+      candidate &&
+      !/(k[ıi]rm[ıi]z[ıi]|mavi|lacivert|ye[şs]il|mor|turuncu|pembe|siyah|beyaz|sar[ıi]|red|blue|green|purple|orange|pink|dark|black|yuvarlak|b[üu]y[üu]k|k[üu][çc][üu]k)/i.test(
+        candidate
+      )
+    ) {
+      edits.ctaText = candidate;
+    }
+  }
+
+  return edits;
+}
+
 function patchExistingWidgetCode(existingCode, campaignType, userRequest) {
   const containerId = CONTAINER_IDS[campaignType];
   const theme = extractColorTheme(userRequest);
   const discount = extractDiscount(userRequest);
   const quoted = extractQuotedStrings(userRequest);
+  const naturalEdits = extractNaturalFieldEdits(userRequest);
 
   let updated = existingCode.replace(/\n*\/\/ --- CA Demo Theme Patch ---[\s\S]*$/m, '').trim();
 
@@ -167,17 +379,50 @@ function patchExistingWidgetCode(existingCode, campaignType, userRequest) {
     updated = updated.replace(/%\d{1,2}\b/g, `%${discount}`);
   }
 
+  let newTitle = naturalEdits.title || null;
+  let newCta = naturalEdits.ctaText || null;
+
   if (quoted.length > 0) {
     const firstQuote = quoted[0];
-    const safeLiteral = JSON.stringify(firstQuote);
-    if (/(buton|button|cta)/i.test(userRequest) && /ctaText\s*:\s*["'`][^"'`]*["'`]/.test(updated)) {
-      updated = updated.replace(/ctaText\s*:\s*["'`][^"'`]*["'`]/, `ctaText: ${safeLiteral}`);
-    } else if (/(ba[şs]l[ıi]k|title)/i.test(userRequest) && /title\s*:\s*["'`][^"'`]*["'`]/.test(updated)) {
-      updated = updated.replace(/title\s*:\s*["'`][^"'`]*["'`]/, `title: ${safeLiteral}`);
-    } else if (/message\s*:\s*["'`][^"'`]*["'`]/.test(updated)) {
-      updated = updated.replace(/message\s*:\s*["'`][^"'`]*["'`]/, `message: ${safeLiteral}`);
+    if (/(buton|button|cta)/i.test(userRequest) && !newCta) {
+      newCta = firstQuote;
+    } else if (/(ba[şs]l[ıi]k|title)/i.test(userRequest) && !newTitle) {
+      newTitle = firstQuote;
+    } else if (!newTitle) {
+      newTitle = firstQuote;
+    }
+    if (quoted.length > 1 && !newCta) {
+      newCta = quoted[1];
     }
   }
+
+  if (newCta) {
+    const safeCta = JSON.stringify(newCta);
+    if (/ctaText\s*:\s*["'`][^"'`]*["'`]/.test(updated)) {
+      updated = updated.replace(/ctaText\s*:\s*["'`][^"'`]*["'`]/, `ctaText: ${safeCta}`);
+    }
+    updated = updated.replace(
+      /(<(?:button|a)\b[^>]*\bclass=(['"])[^'"]*\bca-btn\b[^'"]*\2[^>]*>)([\s\S]*?)(<\/(?:button|a)>)/i,
+      (_, openTag, _q, oldInner, closeTag) =>
+        oldInner.includes('TEMPLATE_CONFIG.') ? _ : `${openTag}${newCta}${closeTag}`
+    );
+  }
+
+  if (newTitle) {
+    const safeTitle = JSON.stringify(newTitle);
+    if (/title\s*:\s*["'`][^"'`]*["'`]/.test(updated)) {
+      updated = updated.replace(/title\s*:\s*["'`][^"'`]*["'`]/, `title: ${safeTitle}`);
+    } else if (/message\s*:\s*["'`][^"'`]*["'`]/.test(updated)) {
+      updated = updated.replace(/message\s*:\s*["'`][^"'`]*["'`]/, `message: ${safeTitle}`);
+    }
+    updated = updated.replace(
+      /(<(?:h1|h2|h3|div|span)\b[^>]*\bclass=(['"])[^'"]*\bca-title\b[^'"]*\2[^>]*>)([\s\S]*?)(<\/(?:h1|h2|h3|div|span)>)/i,
+      (_, openTag, _q, oldInner, closeTag) =>
+        oldInner.includes('TEMPLATE_CONFIG.') ? _ : `${openTag}${newTitle}${closeTag}`
+    );
+  }
+
+  updated = reconcileAiEditedCode(updated, existingCode, userRequest);
 
   const modalBg = theme.isDark ? '#0f172a' : '';
   const modalFg = theme.isDark ? '#f8fafc' : '';

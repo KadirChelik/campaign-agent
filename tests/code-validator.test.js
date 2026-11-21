@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CONTAINER_IDS,
   buildDemoFallbackCode,
+  reconcileAiEditedCode,
   stripCodeFences,
   validateCampaignCode,
 } from '../src/core/codeValidator.js';
@@ -118,6 +119,81 @@ describe('codeValidator', () => {
       expect(validateCampaignCode(patchedTwice, 'popup').ok).toBe(true);
       expect(patchedTwice).toContain('#2563eb');
       expect(patchedTwice.match(/CA Demo Theme Patch/g)?.length).toBe(1);
+    });
+
+    it('patches unquoted natural Turkish title and CTA edits into both TEMPLATE_CONFIG and baked innerHTML', () => {
+      const heroTemplate = POPUP_TEMPLATES.find((t) => t.id === 'horizontal-hero') || POPUP_TEMPLATES[1];
+      const bakedCode = heroTemplate.code
+        .replace('${TEMPLATE_CONFIG.title}', 'YENİ SEZONU KEŞFET')
+        .replace('${TEMPLATE_CONFIG.ctaText}', 'ALIŞVERİŞE BAŞLA');
+
+      const patched = buildDemoFallbackCode(
+        'popup',
+        'Başlığı KIŞ FIRSATI yap, buton yazısını HEMEN AL yap ve kırmızı olsun',
+        bakedCode
+      );
+      expect(validateCampaignCode(patched, 'popup').ok).toBe(true);
+      expect(patched).toContain('title: "KIŞ FIRSATI"');
+      expect(patched).toContain('ctaText: "HEMEN AL"');
+      expect(patched).toContain('>KIŞ FIRSATI<');
+      expect(patched).toContain('>HEMEN AL<');
+    });
+  });
+
+  describe('reconcileAiEditedCode', () => {
+    it('syncs TEMPLATE_CONFIG changes into baked literal container.innerHTML and strips stale visual-editor overrides', () => {
+      const previousCode = `(function () {
+  if (document.getElementById('ca-widget-popup-container')) return;
+  const TEMPLATE_CONFIG = {
+    title: "ESKİ BAŞLIK",
+    ctaText: "ESKİ BUTON"
+  };
+  const style = document.createElement('style');
+  style.innerHTML = \`.ca-title { color: #111111; }\`;
+  document.head.appendChild(style);
+  const container = document.createElement('div');
+  container.id = 'ca-widget-popup-container';
+  container.innerHTML = \`<div class="ca-modal"><style class="ca-visual-edits">@media (min-width: 769px) { #ca-el-1 { color: #111111 !important; } }</style><h2 id="ca-el-1" class="ca-title" data-ca-styles="{&quot;desktop&quot;:{&quot;color&quot;:&quot;#111111&quot;}}">ESKİ BAŞLIK</h2><button class="ca-btn">ESKİ BUTON</button></div>\`;
+  document.body.appendChild(container);
+})();`;
+
+      // Simulate LLM updating TEMPLATE_CONFIG and main <style>, but forgetting to update baked innerHTML & stale data-ca-styles
+      const llmOutput = previousCode
+        .replace('title: "ESKİ BAŞLIK"', 'title: "YENİ KIŞ BAŞLIĞI"')
+        .replace('ctaText: "ESKİ BUTON"', 'ctaText: "FIRSATI YAKALA"')
+        .replace('.ca-title { color: #111111; }', '.ca-title { color: #dc2626; }');
+
+      const reconciled = reconcileAiEditedCode(
+        llmOutput,
+        previousCode,
+        'Başlığı YENİ KIŞ BAŞLIĞI yap, rengini kırmızı yap'
+      );
+
+      expect(validateCampaignCode(reconciled, 'popup').ok).toBe(true);
+      expect(reconciled).toContain('>YENİ KIŞ BAŞLIĞI</h2>');
+      expect(reconciled).toContain('>FIRSATI YAKALA</button>');
+      expect(reconciled).not.toContain('data-ca-styles=');
+      expect(reconciled).not.toContain('ca-visual-edits');
+    });
+
+    it('rebuilds .ca-visual-edits when the AI explicitly updates data-ca-styles', () => {
+      const previousCode = `(function () {
+  if (document.getElementById('ca-widget-popup-container')) return;
+  const container = document.createElement('div');
+  container.id = 'ca-widget-popup-container';
+  container.innerHTML = \`<div class="ca-modal"><style class="ca-visual-edits">@media (min-width: 769px) { #ca-el-1 { color: #111111 !important; } }</style><h2 id="ca-el-1" class="ca-title" data-ca-styles='{"desktop":{"color":"#111111"}}'>BAŞLIK</h2></div>\`;
+  document.body.appendChild(container);
+})();`;
+
+      const llmUpdatedAttr = previousCode.replace(
+        'data-ca-styles=\'{"desktop":{"color":"#111111"}}\'',
+        'data-ca-styles=\'{"desktop":{"color":"#2563eb"}}\''
+      );
+
+      const reconciled = reconcileAiEditedCode(llmUpdatedAttr, previousCode, 'Başlığı mavi yap');
+      expect(reconciled).toContain('data-ca-styles=\'{"desktop":{"color":"#2563eb"}}\'');
+      expect(reconciled).toContain('#ca-el-1 { color: #2563eb !important; }');
+      expect(reconciled).not.toContain('#111111 !important');
     });
   });
 

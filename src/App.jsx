@@ -189,8 +189,6 @@ function App() {
       }
 
       if (e.data.type === 'PATCH_JS_CODE') {
-        isVisualUpdateRef.current = true;
-
         setSessions((prev) =>
           prev.map((s) => {
             if (s.id === currentSessionId) {
@@ -201,6 +199,10 @@ function App() {
                 : e.data.fullHtml;
 
               draftCodeRef.current = updatedCode;
+              if (updatedCode === currentCode) {
+                return s;
+              }
+              isVisualUpdateRef.current = true;
               return { ...s, generatedCode: updatedCode };
             }
             return s;
@@ -284,6 +286,7 @@ function App() {
     );
 
     setTimeout(() => {
+      isVisualUpdateRef.current = false;
       setSessions((prev) =>
         prev.map((s) => {
           if (s.id === currentSessionId) {
@@ -548,8 +551,10 @@ function App() {
         { type: 'agent', text: `${baseMsg}${demoNote}${warningNote}` },
       ];
 
-      updateActiveSession(updatedMessages, code);
+      isVisualUpdateRef.current = false;
       draftCodeRef.current = '';
+      updateActiveSession(updatedMessages, code);
+      setRefreshKey((prev) => prev + 1);
       setActiveTab('edit');
     } catch (error) {
       console.error('Backend Hatası:', error);
@@ -765,6 +770,7 @@ function App() {
                         className="code-box"
                         value={generatedCode}
                         onChange={(e) => {
+                          isVisualUpdateRef.current = false;
                           updateActiveSession(messages, e.target.value);
                           setIframeError(null);
                         }}

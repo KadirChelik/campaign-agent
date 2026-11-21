@@ -30,7 +30,7 @@ flowchart TD
 - **Three Campaign Formats**: Build and customize **Popup** modals, **Banner** bars (fixed-top, fixed-bottom, or inline DOM-injected), and **Earlet** floating teasers (8-position anchor controls).
 - **Starter Template Gallery**: Ready-to-edit Popup, Banner, and Earlet templates using isolated `ca-widget-*` containers, `TEMPLATE_CONFIG` hooks, and `// [TRACKING_IMPRESSION]` / `// [TRACKING_CLICK]` markers.
 - **Multi-Provider AI Generation + Auto-Repair**:
-  - Primary **Google Gemini REST API** (`gemini-2.5-flash` -> `gemini-2.0-flash`, supporting multimodal text + up to 2 uploaded reference images)
+  - Primary **Google Gemini REST API** (`gemini-3.1-flash-lite` -> `gemini-3.5-flash`, supporting multimodal text + up to 2 uploaded reference images)
   - Automatic fallback to **Groq** (`llama-3.3-70b-versatile`) and **OpenRouter** (`openrouter/free`)
   - Up to **2 automatic validation-repair retries** feeding exact validator errors back to the model (returning HTTP `422` if all retries fail validation)
 - **Zero-Key Deterministic Demo Mode**: Runs seamlessly without any API keys configured (or when upstream providers fail/rate-limit) via `buildDemoFallbackCode`, returning `mode: "demo"` with deterministic color, discount, and copy updates.
@@ -73,7 +73,7 @@ cp .env.example .env
 | Variable | Purpose | Default |
 | --- | --- | --- |
 | `GEMINI_API_KEY` | Primary Google Gemini REST API key (supports multimodal image uploads) | _(empty -> skips Gemini)_ |
-| `GEMINI_MODEL` | Primary Gemini model override | `gemini-2.5-flash` (fallback `gemini-2.0-flash`) |
+| `GEMINI_MODEL` | Primary Gemini model override | `gemini-3.1-flash-lite` (fallback `gemini-3.5-flash`) |
 | `GROQ_API_KEY` | Secondary OpenAI-compatible Groq API key | _(empty -> skips Groq)_ |
 | `GROQ_MODEL` | Groq model override | `llama-3.3-70b-versatile` |
 | `OPENROUTER_API_KEY` | Tertiary OpenAI-compatible OpenRouter API key | _(empty -> skips OpenRouter)_ |

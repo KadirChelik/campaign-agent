@@ -2,6 +2,7 @@ import {
   CONTAINER_IDS,
   MAX_CODE_LENGTH,
   buildDemoFallbackCode,
+  reconcileAiEditedCode,
   validateCampaignCode,
 } from '../src/core/codeValidator.js';
 
@@ -15,7 +16,7 @@ const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = 15;
 const RATE_LIMIT_MAX_BUCKETS = 1000;
 
-const DEFAULT_GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+const DEFAULT_GEMINI_MODELS = ['gemini-3.1-flash-lite', 'gemini-3.5-flash'];
 const DEFAULT_GROQ_MODEL = 'llama-3.3-70b-versatile';
 const DEFAULT_OPENROUTER_MODEL = 'openrouter/free';
 const GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions';
@@ -309,8 +310,10 @@ STRICT RULES:
    - Return ONLY executable JavaScript. Do NOT wrap output in markdown fences (\`\`\`js) or <script> tags.
    - NEVER use: eval(, new Function(, fetch(, XMLHttpRequest, document.cookie, localStorage, sessionStorage, indexedDB, window.top.location, parent.location, <script src=...>, or dynamic import(.
 
-5. DOM & VISUAL EDITOR COMPATIBILITY:
-   - Preserve any existing id="ca-el-...", data-ca-styles, data-epos, contenteditable, and TEMPLATE_CONFIG fields when editing existing code.
+5. DOM & VISUAL EDITOR COMPATIBILITY (CRITICAL WHEN MODIFYING EXISTING CODE):
+   - Always update BOTH TEMPLATE_CONFIG AND container.innerHTML so text, images, prices/discounts, and button labels reflect the requested changes even if container.innerHTML contains baked literal HTML instead of \${TEMPLATE_CONFIG.*} interpolations.
+   - If you add any new HTML elements or classes (e.g. adding a headline, button, badge, coupon box, or timer to an image-only or minimal template), you MUST also add complete, polished CSS rules for those classes inside the widget's <style> block.
+   - If an element has data-ca-styles or a rule inside <style class="ca-visual-edits"> and the user requests a style change on that element (color, background, font size, border-radius, padding, alignment, width/height, or theme), update or remove the conflicting property inside data-ca-styles AND <style class="ca-visual-edits"> so old !important visual-editor rules do not override your new styles.
    - Check window.__CA_EDIT_MODE__ before closing, navigating, or mutating document.body layout margins.`;
 
   let specificRules = '';
@@ -351,7 +354,7 @@ function buildUserPrompt(data) {
   }
 
   if (data.generatedCode) {
-    text = `Existing Widget Code:\n${data.generatedCode}\n\nApply ONLY the requested changes cleanly to this existing code:\n${text}`;
+    text = `Existing Widget Code:\n${data.generatedCode}\n\nApply the requested changes to this existing code. Make sure to update BOTH TEMPLATE_CONFIG AND container.innerHTML (if literal HTML is present), add complete CSS rules for any newly introduced elements, and clear/update any conflicting data-ca-styles or .ca-visual-edits overrides:\n${text}`;
   }
 
   return text;
@@ -430,8 +433,11 @@ async function invokeGeminiRest({ apiKey, model, systemPrompt, userPrompt, image
   }
 
   const data = await response.json();
-  const text = data?.candidates?.[0]?.content?.parts
-    ?.map((part) => (typeof part?.text === 'string' ? part.text : ''))
+  const partsList = data?.candidates?.[0]?.content?.parts || [];
+  const nonThoughtParts = partsList.filter((part) => !part?.thought);
+  const effectiveParts = nonThoughtParts.length > 0 ? nonThoughtParts : partsList;
+  const text = effectiveParts
+    .map((part) => (typeof part?.text === 'string' ? part.text : ''))
     .join('\n')
     .trim();
 
@@ -617,7 +623,10 @@ export async function handleGenerateRequest(payload, options = {}) {
 
     sawLlmResponse = true;
     const withImages = applyUploadedImageTokens(attemptRawCode, data.images);
-    const check = validateCampaignCode(withImages, data.campaignType);
+    const reconciled = data.generatedCode
+      ? reconcileAiEditedCode(withImages, data.generatedCode, data.userRequest)
+      : withImages;
+    const check = validateCampaignCode(reconciled, data.campaignType);
 
     if (check.ok) {
       return {

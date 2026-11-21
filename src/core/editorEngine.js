@@ -32,7 +32,7 @@ export const initEditorEngine = (currentSessionId) => {
   let dragOffsetY = 0;
   let saveTimeoutId = null;
 
-  const saveState = (immediate = false) => {
+  const saveState = (immediate = false, syncToParent = true) => {
     const executeSave = () => {
       const clone = doc.body.cloneNode(true);
       const selected = clone.querySelectorAll('.ca-selected-element');
@@ -44,7 +44,7 @@ export const initEditorEngine = (currentSessionId) => {
       });
 
       const agentContainer = clone.querySelector('[id^="ca-widget-"]');
-      if (agentContainer) {
+      if (syncToParent && agentContainer) {
         const inner = agentContainer.innerHTML;
         const cStyle = agentContainer.getAttribute('style') || '';
         window.parent.postMessage(
@@ -176,8 +176,6 @@ export const initEditorEngine = (currentSessionId) => {
     mainDoc.body.appendChild(toolbar);
   }
 
-  setTimeout(() => saveState(), 300);
-
   const renderResponsiveStyles = () => {
     const elements = doc.querySelectorAll('[data-ca-styles]');
     const entries = [];
@@ -199,6 +197,10 @@ export const initEditorEngine = (currentSessionId) => {
     const agentContainer = doc.querySelector('[id^="ca-widget-"]');
     if (agentContainer) {
       let styleTag = agentContainer.querySelector('.ca-visual-edits');
+      if (!cssText.trim()) {
+        if (styleTag) styleTag.remove();
+        return;
+      }
       if (!styleTag) {
         styleTag = doc.createElement('style');
         styleTag.className = 'ca-visual-edits';
@@ -207,6 +209,11 @@ export const initEditorEngine = (currentSessionId) => {
       styleTag.innerHTML = cssText;
     }
   };
+
+  setTimeout(() => {
+    renderResponsiveStyles();
+    saveState(false, false);
+  }, 300);
 
   const applyStyle = (el, prop, val, shouldSave = true) => {
     if (!el) return;
