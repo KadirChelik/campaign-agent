@@ -2,7 +2,7 @@
 
 AI-assisted no-code widget studio for generating, visually editing, and exporting self-contained **Popup**, **Banner**, and **Earlet** JavaScript widgets.
 
-[Live Demo](https://campaign-agent.vercel.app/)
+[Live Demo](https://campaign-agent-weld.vercel.app/)
 
 ---
 
