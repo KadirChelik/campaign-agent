@@ -18,7 +18,7 @@ const loadImageElement = (src) =>
  * Reads an uploaded image file and compresses/downscales it via Canvas when supported.
  * Falls back cleanly to the raw data URL for SVGs or environments without Canvas.
  */
-export const compressImageToDataUrl = async (file, maxWidth = 960, quality = 0.82) => {
+export const compressImageToDataUrl = async (file, maxWidth = 720, quality = 0.78) => {
   if (!file) {
     throw new Error('Geçersiz görsel dosyası.');
   }

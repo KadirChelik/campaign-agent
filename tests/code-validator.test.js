@@ -46,6 +46,18 @@ describe('codeValidator', () => {
       expect(oversized.errors.some((e) => /maximum length/i.test(e))).toBe(true);
     });
 
+    it('accepts valid widgets embedding compressed base64 images while enforcing MAX_TOTAL_CODE_LENGTH', () => {
+      const base64Body = 'QUJD'.repeat(18_000); // 72,000 chars base64
+      const withInlineImg = `(function(){ if(document.getElementById('ca-widget-popup-container')) return; const img = "data:image/webp;base64,${base64Body}"; console.log(img); })();`;
+      expect(validateCampaignCode(withInlineImg, 'popup').ok).toBe(true);
+
+      const massiveBody = 'QUJD'.repeat(90_000); // 360,000 chars (> 350,000 total limit)
+      const tooHugeTotal = `(function(){ if(document.getElementById('ca-widget-popup-container')) return; const img = "data:image/webp;base64,${massiveBody}"; })();`;
+      const resTooHuge = validateCampaignCode(tooHugeTotal, 'popup');
+      expect(resTooHuge.ok).toBe(false);
+      expect(resTooHuge.errors.some((e) => /total length/i.test(e))).toBe(true);
+    });
+
     it('rejects missing container ID, missing guard/IIFE, and JS syntax errors', () => {
       const wrongId = `(function(){ if(document.getElementById('ca-widget-banner-container')) return; })();`;
       const resWrongId = validateCampaignCode(wrongId, 'popup');

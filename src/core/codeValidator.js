@@ -7,6 +7,17 @@ export const CONTAINER_IDS = Object.freeze({
 });
 
 export const MAX_CODE_LENGTH = 65_000;
+export const MAX_TOTAL_CODE_LENGTH = 350_000;
+
+const INLINE_DATA_IMAGE_REGEX = /data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+/g;
+
+/**
+ * Measures JS/widget code length excluding embedded base64 data:image payloads.
+ */
+export function measureCodeLengthWithoutDataUrls(code) {
+  if (typeof code !== 'string' || !code) return 0;
+  return code.replace(INLINE_DATA_IMAGE_REGEX, 'data:image/inline').length;
+}
 
 const DANGEROUS_PATTERNS = [
   { pattern: /\bdocument\.cookie\b/i, message: 'Disallowed API: document.cookie is not permitted.' },
@@ -78,8 +89,12 @@ export function validateCampaignCode(rawCode, campaignType) {
     return { ok: false, code, errors };
   }
 
-  if (code.length > MAX_CODE_LENGTH) {
-    errors.push(`Generated code exceeds maximum length of ${MAX_CODE_LENGTH} characters.`);
+  if (measureCodeLengthWithoutDataUrls(code) > MAX_CODE_LENGTH) {
+    errors.push(`Generated code exceeds maximum length of ${MAX_CODE_LENGTH} characters (excluding inline images).`);
+  }
+
+  if (code.length > MAX_TOTAL_CODE_LENGTH) {
+    errors.push(`Generated code with inline assets exceeds maximum total length of ${MAX_TOTAL_CODE_LENGTH} characters.`);
   }
 
   if (expectedContainerId && !code.includes(expectedContainerId)) {

@@ -269,4 +269,40 @@ describe('api/generate-campaign', () => {
     // 2 Gemini default models + 1 Groq call = 3 fetch invocations
     expect(mockFetch).toHaveBeenCalledTimes(3);
   });
+
+  it('tokenizes inline base64 images inside generatedCode before sending to LLM and restores them in output', async () => {
+    const fakeDataUri = `data:image/webp;base64,${'QUJD'.repeat(18_000)}`;
+    const existingCode = `(function () {
+      if (document.getElementById('ca-widget-popup-container')) return;
+      const TEMPLATE_CONFIG = { title: "ESKİ" };
+      const el = document.createElement('div');
+      el.id = 'ca-widget-popup-container';
+      el.innerHTML = \`<div class="ca-modal"><img src="${fakeDataUri}" /><h2 class="ca-title">ESKİ</h2></div>\`;
+      document.body.appendChild(el);
+    })();`;
+
+    const mockProvider = vi.fn(async ({ generatedCode, userPrompt }) => {
+      expect(generatedCode).not.toContain('data:image/webp;base64,');
+      expect(generatedCode).toContain('__CA_EXISTING_IMG_0__');
+      expect(userPrompt).toContain('__CA_EXISTING_IMG_0__');
+      return generatedCode
+        .replace('title: "ESKİ"', 'title: "YENİ"')
+        .replace('>ESKİ<', '>YENİ<');
+    });
+
+    const result = await handleGenerateRequest(
+      {
+        campaignType: 'popup',
+        userRequest: 'Başlığı YENİ yap',
+        generatedCode: existingCode,
+      },
+      { generateWithProvider: mockProvider }
+    );
+
+    expect(result.status).toBe(200);
+    expect(result.body.mode).toBe('llm');
+    expect(result.body.code).toContain(fakeDataUri);
+    expect(result.body.code).not.toContain('__CA_EXISTING_IMG_0__');
+    expect(result.body.code).toContain('>YENİ<');
+  });
 });

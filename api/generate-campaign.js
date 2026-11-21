@@ -1,7 +1,9 @@
 import {
   CONTAINER_IDS,
   MAX_CODE_LENGTH,
+  MAX_TOTAL_CODE_LENGTH,
   buildDemoFallbackCode,
+  measureCodeLengthWithoutDataUrls,
   reconcileAiEditedCode,
   validateCampaignCode,
 } from '../src/core/codeValidator.js';
@@ -263,11 +265,14 @@ function validatePayload(raw) {
     if (typeof generatedCode !== 'string') {
       return { ok: false, status: 400, message: 'generatedCode must be a string.' };
     }
-    if (generatedCode.length > MAX_CODE_LENGTH) {
+    if (
+      generatedCode.length > MAX_TOTAL_CODE_LENGTH ||
+      measureCodeLengthWithoutDataUrls(generatedCode) > MAX_CODE_LENGTH
+    ) {
       return {
         ok: false,
         status: 400,
-        message: `generatedCode exceeds ${MAX_CODE_LENGTH} characters.`,
+        message: `generatedCode exceeds ${MAX_CODE_LENGTH} characters (or ${MAX_TOTAL_CODE_LENGTH} total with inline images).`,
       };
     }
     normalizedExistingCode = generatedCode;
@@ -339,7 +344,38 @@ STRICT RULES:
   return `${baseRules}\n${specificRules}`;
 }
 
-function buildUserPrompt(data) {
+const EXISTING_DATA_IMAGE_REGEX = /data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+/g;
+
+function tokenizeExistingDataUrls(code) {
+  if (typeof code !== 'string' || !code) {
+    return { tokenizedCode: code || '', existingImages: [] };
+  }
+  const existingImages = [];
+  const indexByUri = new Map();
+  const tokenizedCode = code.replace(EXISTING_DATA_IMAGE_REGEX, (uri) => {
+    let idx = indexByUri.get(uri);
+    if (idx === undefined) {
+      idx = existingImages.length;
+      existingImages.push(uri);
+      indexByUri.set(uri, idx);
+    }
+    return `__CA_EXISTING_IMG_${idx}__`;
+  });
+  return { tokenizedCode, existingImages };
+}
+
+function restoreExistingDataUrls(code, existingImages) {
+  let out = code;
+  existingImages.forEach((uri, idx) => {
+    const token = `__CA_EXISTING_IMG_${idx}__`;
+    if (out.includes(token)) {
+      out = out.split(token).join(uri);
+    }
+  });
+  return out;
+}
+
+function buildUserPrompt(data, existingImageCount = 0) {
   let text = `Campaign Type: ${data.campaignType.toUpperCase()}\nUser Request: ${data.userRequest || 'Design a high-converting widget matching the attached visual reference.'}`;
 
   if (data.images.length > 0) {
@@ -354,7 +390,11 @@ function buildUserPrompt(data) {
   }
 
   if (data.generatedCode) {
-    text = `Existing Widget Code:\n${data.generatedCode}\n\nApply the requested changes to this existing code. Make sure to update BOTH TEMPLATE_CONFIG AND container.innerHTML (if literal HTML is present), add complete CSS rules for any newly introduced elements, and clear/update any conflicting data-ca-styles or .ca-visual-edits overrides:\n${text}`;
+    const preserveImageNote =
+      existingImageCount > 0
+        ? ' Keep any __CA_EXISTING_IMG_*__ image placeholders unchanged unless the user explicitly asks to remove or replace that image.'
+        : '';
+    text = `Existing Widget Code:\n${data.generatedCode}\n\nApply the requested changes to this existing code. Make sure to update BOTH TEMPLATE_CONFIG AND container.innerHTML (if literal HTML is present), add complete CSS rules for any newly introduced elements, and clear/update any conflicting data-ca-styles or .ca-visual-edits overrides.${preserveImageNote}\n${text}`;
   }
 
   return text;
@@ -552,8 +592,12 @@ export async function handleGenerateRequest(payload, options = {}) {
   const data = validation.data;
   const env = options.env || process.env;
   const fetchImpl = options.fetchImpl || fetch;
+  const { tokenizedCode, existingImages } = tokenizeExistingDataUrls(data.generatedCode);
   const systemPrompt = buildSystemPrompt(data.campaignType);
-  const baseUserPrompt = buildUserPrompt(data);
+  const baseUserPrompt = buildUserPrompt(
+    { ...data, generatedCode: tokenizedCode },
+    existingImages.length
+  );
 
   const hasCustomGenerator = typeof options.generateWithProvider === 'function';
   const targets = hasCustomGenerator
@@ -564,7 +608,7 @@ export async function handleGenerateRequest(payload, options = {}) {
             options.generateWithProvider({
               campaignType: data.campaignType,
               userRequest: data.userRequest,
-              generatedCode: data.generatedCode,
+              generatedCode: tokenizedCode,
               images,
               systemPrompt: sys,
               userPrompt,
@@ -576,10 +620,11 @@ export async function handleGenerateRequest(payload, options = {}) {
     : buildProviderTargets(env);
 
   if (targets.length === 0) {
+    const demoTokenized = buildDemoFallbackCode(data.campaignType, data.userRequest, tokenizedCode);
     return {
       status: 200,
       body: {
-        code: buildDemoFallbackCode(data.campaignType, data.userRequest, data.generatedCode),
+        code: restoreExistingDataUrls(demoTokenized, existingImages),
         mode: 'demo',
         provider: 'local-demo',
         warnings: ['No LLM API keys configured; running deterministic local demo mode.'],
@@ -622,25 +667,34 @@ export async function handleGenerateRequest(payload, options = {}) {
     }
 
     sawLlmResponse = true;
-    const withImages = applyUploadedImageTokens(attemptRawCode, data.images);
-    const reconciled = data.generatedCode
-      ? reconcileAiEditedCode(withImages, data.generatedCode, data.userRequest)
-      : withImages;
-    const check = validateCampaignCode(reconciled, data.campaignType);
+    const reconciledTokenized = tokenizedCode
+      ? reconcileAiEditedCode(attemptRawCode, tokenizedCode, data.userRequest)
+      : attemptRawCode;
+    const tokenizedCheck = validateCampaignCode(reconciledTokenized, data.campaignType);
 
-    if (check.ok) {
-      return {
-        status: 200,
-        body: {
-          code: check.code,
-          mode: 'llm',
-          provider: attemptProviderName,
-        },
-      };
+    if (tokenizedCheck.ok) {
+      const restoredCode = restoreExistingDataUrls(
+        applyUploadedImageTokens(tokenizedCheck.code, data.images),
+        existingImages
+      );
+      const finalCheck = validateCampaignCode(restoredCode, data.campaignType);
+      if (finalCheck.ok) {
+        return {
+          status: 200,
+          body: {
+            code: finalCheck.code,
+            mode: 'llm',
+            provider: attemptProviderName,
+          },
+        };
+      }
+      lastValidationErrors = finalCheck.errors;
+      currentPrompt = buildRepairPrompt(baseUserPrompt, tokenizedCheck.code, finalCheck.errors);
+      continue;
     }
 
-    lastValidationErrors = check.errors;
-    currentPrompt = buildRepairPrompt(baseUserPrompt, check.code, check.errors);
+    lastValidationErrors = tokenizedCheck.errors;
+    currentPrompt = buildRepairPrompt(baseUserPrompt, tokenizedCheck.code, tokenizedCheck.errors);
   }
 
   if (sawLlmResponse) {
@@ -653,10 +707,11 @@ export async function handleGenerateRequest(payload, options = {}) {
     };
   }
 
+  const fallbackTokenized = buildDemoFallbackCode(data.campaignType, data.userRequest, tokenizedCode);
   return {
     status: 200,
     body: {
-      code: buildDemoFallbackCode(data.campaignType, data.userRequest, data.generatedCode),
+      code: restoreExistingDataUrls(fallbackTokenized, existingImages),
       mode: 'demo',
       provider: 'local-demo',
       warnings: [

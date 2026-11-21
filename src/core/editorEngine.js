@@ -522,13 +522,17 @@ export const initEditorEngine = (currentSessionId) => {
 
   setupDropdown('ca-earlet-pos-btn', 'ca-earlet-pos-menu');
 
-  doc.addEventListener('mousedown', (e) => {
+  if (doc._caMouseDownListener) {
+    doc.removeEventListener('mousedown', doc._caMouseDownListener);
+  }
+  doc._caMouseDownListener = (e) => {
     if (!iframe.contentWindow.__CA_EDIT_MODE__) return;
     const tag = e.target.tagName.toLowerCase();
     if (tag === 'input' || tag === 'textarea' || tag === 'button' || tag === 'select') {
       e.preventDefault();
     }
-  });
+  };
+  doc.addEventListener('mousedown', doc._caMouseDownListener);
 
   if (doc._caHoverOver) doc.removeEventListener('mouseover', doc._caHoverOver);
   if (doc._caHoverOut) doc.removeEventListener('mouseout', doc._caHoverOut);
@@ -598,9 +602,10 @@ export const initEditorEngine = (currentSessionId) => {
   doc.addEventListener('mouseover', doc._caHoverOver);
   doc.addEventListener('mouseout', doc._caHoverOut);
 
-  doc.body.addEventListener(
-    'click',
-    (e) => {
+  if (doc.body._caClickListener) {
+    doc.body.removeEventListener('click', doc.body._caClickListener, true);
+  }
+  doc.body._caClickListener = (e) => {
       if (!iframe.contentWindow.__CA_EDIT_MODE__) return;
       if (doc.getElementById('ca-picker-style-tag')) return;
 
@@ -781,9 +786,8 @@ export const initEditorEngine = (currentSessionId) => {
         ? parentLink.getAttribute('href')
         : activeElement.getAttribute('href') || '';
       toolbar.classList.add('ca-visible');
-    },
-    true
-  );
+  };
+  doc.body.addEventListener('click', doc.body._caClickListener, true);
 
   const triggerEdit = (el) => {
     if (!el) return;
@@ -854,14 +858,18 @@ export const initEditorEngine = (currentSessionId) => {
     }
   };
 
-  doc.body.addEventListener('dblclick', (e) => {
+  if (doc.body._caDblClickListener) {
+    doc.body.removeEventListener('dblclick', doc.body._caDblClickListener);
+  }
+  doc.body._caDblClickListener = (e) => {
     if (!iframe.contentWindow.__CA_EDIT_MODE__) return;
     if (!e.target.closest('[id^="ca-widget-"]')) return;
     if (activeElement) {
       e.stopPropagation();
       triggerEdit(activeElement);
     }
-  });
+  };
+  doc.body.addEventListener('dblclick', doc.body._caDblClickListener);
 
   const bindToolbarEvents = () => {
     ['ca-link-menu', 'ca-timer-menu', 'ca-position-menu'].forEach((id) => {
@@ -1010,38 +1018,45 @@ export const initEditorEngine = (currentSessionId) => {
     mainDoc.getElementById('ca-link-save-btn').onclick = (e) => {
       e.stopPropagation();
       if (!activeElement) return;
-      const url = mainDoc.getElementById('ca-link-input').value;
-      if (url) {
-        const parentLink = activeElement.closest('a');
-        if (parentLink) {
-          parentLink.href = url;
-        } else if (activeElement.tagName.toLowerCase() === 'a') {
-          activeElement.href = url;
-        } else {
-          const link = doc.createElement('a');
-          link.href = url;
-          link.target = '_blank';
-          link.style.color = 'inherit';
-          link.style.textDecoration = 'none';
-          const currentDisplay = window.getComputedStyle(activeElement).display;
-          link.style.display = currentDisplay === 'inline' ? 'inline-block' : currentDisplay;
-          const isPopupBtn =
-            activeElement.classList.contains('ca-btn') &&
-            activeElement.closest('.ca-modal') !== null;
-          if (activeElement.style.width === '100%' || isPopupBtn) {
-            link.style.width = '100%';
-            if (link.style.display === 'inline-block') link.style.display = 'block';
-          }
-          activeElement.parentNode.insertBefore(link, activeElement);
-          link.appendChild(activeElement);
-          activeElement.classList.remove('ca-selected-element');
-          activeElement = link;
-          activeElement.classList.add('ca-selected-element');
-        }
-        forceSyncToReact();
-        saveState();
-        closeAllDropdowns();
+      const rawUrl = mainDoc.getElementById('ca-link-input').value.trim();
+      if (!rawUrl) return;
+      if (/^(javascript|data|vbscript):/i.test(rawUrl)) {
+        alert('Güvenlik nedeniyle yalnızca https://, http://, / veya # bağlantıları eklenebilir.');
+        return;
       }
+      const url = /^(https?:\/\/|#|\/)/i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+      const parentLink = activeElement.closest('a');
+      if (parentLink) {
+        parentLink.href = url;
+        parentLink.rel = 'noopener noreferrer';
+      } else if (activeElement.tagName.toLowerCase() === 'a') {
+        activeElement.href = url;
+        activeElement.rel = 'noopener noreferrer';
+      } else {
+        const link = doc.createElement('a');
+        link.href = url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.style.color = 'inherit';
+        link.style.textDecoration = 'none';
+        const currentDisplay = window.getComputedStyle(activeElement).display;
+        link.style.display = currentDisplay === 'inline' ? 'inline-block' : currentDisplay;
+        const isPopupBtn =
+          activeElement.classList.contains('ca-btn') &&
+          activeElement.closest('.ca-modal') !== null;
+        if (activeElement.style.width === '100%' || isPopupBtn) {
+          link.style.width = '100%';
+          if (link.style.display === 'inline-block') link.style.display = 'block';
+        }
+        activeElement.parentNode.insertBefore(link, activeElement);
+        link.appendChild(activeElement);
+        activeElement.classList.remove('ca-selected-element');
+        activeElement = link;
+        activeElement.classList.add('ca-selected-element');
+      }
+      forceSyncToReact();
+      saveState();
+      closeAllDropdowns();
     };
 
     mainDoc.getElementById('ca-delete-btn').onclick = () => {

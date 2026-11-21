@@ -176,6 +176,7 @@ function App() {
       }
 
       if (e.data.type === 'UPDATE_CONFIG') {
+        isVisualUpdateRef.current = false;
         setSessions((prev) =>
           prev.map((s) => {
             if (s.id === currentSessionId) {
