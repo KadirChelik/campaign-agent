@@ -4,6 +4,8 @@ import {
   patchTemplateConfig,
   patchVisualEdits,
 } from '../src/core/codePatcher.js';
+import { validateCampaignCode } from '../src/core/codeValidator.js';
+import { BANNER_TEMPLATES } from '../src/templates/bannerTemplates.js';
 
 describe('codePatcher', () => {
   describe('patchTemplateConfig', () => {
@@ -45,6 +47,30 @@ describe('codePatcher', () => {
       expect(patchedEarlet).toContain('earletPos: "bottom-left"');
       expect(patchedEarlet).toContain('offsetX: "24"');
       expect(patchedEarlet).toContain('offsetY: "32"');
+    });
+
+    it('patches all 6 banner templates to inline positioning repeatedly and stays valid JS', () => {
+      expect(BANNER_TEMPLATES).toHaveLength(6);
+      for (const tpl of BANNER_TEMPLATES) {
+        const inlineBefore = patchTemplateConfig(tpl.code, {
+          positionMode: 'inline',
+          inlineTarget: '#hero-section',
+          inlineRelation: 'beforebegin',
+        });
+        expect(inlineBefore).toContain('positionMode: "inline"');
+        expect(inlineBefore).toContain('inlineTarget: "#hero-section"');
+        expect(inlineBefore).toContain('inlineRelation: "beforebegin"');
+        expect(validateCampaignCode(inlineBefore, 'banner').ok).toBe(true);
+
+        const inlineAfter = patchTemplateConfig(inlineBefore, {
+          positionMode: 'inline',
+          inlineTarget: '#featured-products > div:nth-child(1)',
+          inlineRelation: 'afterend',
+        });
+        expect(inlineAfter).toContain('inlineTarget: "#featured-products > div:nth-child(1)"');
+        expect(inlineAfter).toContain('inlineRelation: "afterend"');
+        expect(validateCampaignCode(inlineAfter, 'banner').ok).toBe(true);
+      }
     });
   });
 

@@ -23,7 +23,7 @@ const getBannerCode = (templateType) => {
     posCSS = 'position: fixed; bottom: 0; left: 0; width: 100%; transform: translateY(100%); transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);';
     showCSS = 'transform: translateY(0);';
   } else if (TEMPLATE_CONFIG.positionMode === 'inline') {
-    posCSS = 'position: relative; width: 100%; display: block; clear: both; flex: 0 0 100%; box-sizing: border-box; opacity: 0; transition: opacity 0.4s ease;';
+    posCSS = 'position: relative; width: 100%; max-width: 100%; flex: 0 0 100%; grid-column: 1 / -1; box-sizing: border-box; opacity: 0; transition: opacity 0.4s ease;';
     showCSS = 'opacity: 1;';
   }
 
@@ -51,6 +51,9 @@ const getBannerCode = (templateType) => {
 
   const container = document.createElement('div');
   container.id = 'ca-widget-banner-container';
+  container.setAttribute('data-pos-mode', TEMPLATE_CONFIG.positionMode || 'fixed-top');
+  container.setAttribute('data-inline-target', TEMPLATE_CONFIG.inlineTarget || '');
+  container.setAttribute('data-inline-relation', TEMPLATE_CONFIG.inlineRelation || 'afterend');
   container.innerHTML = \`
     <div class="ca-banner-content">
       <span class="ca-text">\${TEMPLATE_CONFIG.message}</span>
@@ -117,7 +120,7 @@ const getBannerCode = (templateType) => {
     posCSS = 'position: fixed; bottom: 0; left: 0; width: 100%; transform: translateY(100%); transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);';
     showCSS = 'transform: translateY(0);';
   } else if (TEMPLATE_CONFIG.positionMode === 'inline') {
-    posCSS = 'position: relative; width: 100vw !important; max-width: 100vw !important; margin-left: calc(-50vw + 50%) !important; display: block !important; clear: both !important; flex: 0 0 100vw !important; box-sizing: border-box; opacity: 0; transition: opacity 0.4s ease;';
+    posCSS = 'position: relative; width: 100%; max-width: 100%; flex: 0 0 100%; grid-column: 1 / -1; box-sizing: border-box; opacity: 0; transition: opacity 0.4s ease;';
     showCSS = 'opacity: 1;';
   }
 
@@ -159,6 +162,9 @@ const getBannerCode = (templateType) => {
 
   const container = document.createElement('div');
   container.id = 'ca-widget-banner-container';
+  container.setAttribute('data-pos-mode', TEMPLATE_CONFIG.positionMode || 'fixed-top');
+  container.setAttribute('data-inline-target', TEMPLATE_CONFIG.inlineTarget || '');
+  container.setAttribute('data-inline-relation', TEMPLATE_CONFIG.inlineRelation || 'afterend');
   container.innerHTML = \`
     <div class="ca-banner-content">
       <span class="ca-text">\${TEMPLATE_CONFIG.message}</span>
@@ -253,7 +259,7 @@ const getBannerCode = (templateType) => {
     posCSS = 'position: fixed; bottom: 0; left: 0; width: 100%; transform: translateY(100%); transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);';
     showCSS = 'transform: translateY(0);';
   } else if (TEMPLATE_CONFIG.positionMode === 'inline') {
-    posCSS = 'position: relative; width: 100vw !important; max-width: 100vw !important; margin-left: calc(-50vw + 50%) !important; display: block !important; clear: both !important; flex: 0 0 100vw !important; box-sizing: border-box; opacity: 0; transition: opacity 0.4s ease;';
+    posCSS = 'position: relative; width: 100%; max-width: 100%; flex: 0 0 100%; grid-column: 1 / -1; box-sizing: border-box; opacity: 0; transition: opacity 0.4s ease;';
     showCSS = 'opacity: 1;';
   }
 
@@ -284,6 +290,9 @@ const getBannerCode = (templateType) => {
 
   const container = document.createElement('div');
   container.id = 'ca-widget-banner-container';
+  container.setAttribute('data-pos-mode', TEMPLATE_CONFIG.positionMode || 'fixed-top');
+  container.setAttribute('data-inline-target', TEMPLATE_CONFIG.inlineTarget || '');
+  container.setAttribute('data-inline-relation', TEMPLATE_CONFIG.inlineRelation || 'afterend');
   container.innerHTML = \`
     <div class="ca-banner-content">
       <span class="ca-text">\${TEMPLATE_CONFIG.message}</span>
@@ -364,7 +373,7 @@ const getBannerCode = (templateType) => {
     posCSS = 'position: fixed; bottom: 0; left: 0; width: 100%; transform: translateY(100%); transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);';
     showCSS = 'transform: translateY(0);';
   } else if (TEMPLATE_CONFIG.positionMode === 'inline') {
-    posCSS = 'position: relative; width: 100vw !important; max-width: 100vw !important; margin-left: calc(-50vw + 50%) !important; display: block !important; clear: both !important; flex: 0 0 100vw !important; box-sizing: border-box; opacity: 0; transition: opacity 0.4s ease;';
+    posCSS = 'position: relative; width: 100%; max-width: 100%; flex: 0 0 100%; grid-column: 1 / -1; box-sizing: border-box; opacity: 0; transition: opacity 0.4s ease;';
     showCSS = 'opacity: 1;';
   }
 
@@ -441,6 +450,9 @@ const getBannerCode = (templateType) => {
 
   const container = document.createElement('div');
   container.id = 'ca-widget-banner-container';
+  container.setAttribute('data-pos-mode', TEMPLATE_CONFIG.positionMode || 'fixed-top');
+  container.setAttribute('data-inline-target', TEMPLATE_CONFIG.inlineTarget || '');
+  container.setAttribute('data-inline-relation', TEMPLATE_CONFIG.inlineRelation || 'afterend');
   container.innerHTML = \`
     <button class="ca-close" aria-label="Kapat">×</button>
     <div class="ca-slider-wrapper">
@@ -517,7 +529,7 @@ const getBannerCode = (templateType) => {
     posCSS = 'position: fixed; bottom: 0; left: 0; width: 100%; transform: translateY(100%); transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);';
     showCSS = 'transform: translateY(0);';
   } else if (TEMPLATE_CONFIG.positionMode === 'inline') {
-    posCSS = 'position: relative; width: 100%; display: block; clear: both; flex: 0 0 100%; box-sizing: border-box; opacity: 0; transition: opacity 0.4s ease;';
+    posCSS = 'position: relative; width: 100%; max-width: 100%; flex: 0 0 100%; grid-column: 1 / -1; box-sizing: border-box; opacity: 0; transition: opacity 0.4s ease;';
     showCSS = 'opacity: 1;';
   }
 
@@ -545,6 +557,9 @@ const getBannerCode = (templateType) => {
 
   const container = document.createElement('div');
   container.id = 'ca-widget-banner-container';
+  container.setAttribute('data-pos-mode', TEMPLATE_CONFIG.positionMode || 'fixed-top');
+  container.setAttribute('data-inline-target', TEMPLATE_CONFIG.inlineTarget || '');
+  container.setAttribute('data-inline-relation', TEMPLATE_CONFIG.inlineRelation || 'afterend');
   container.innerHTML = \`
     <div class="ca-banner-link" id="ca-cta-link">
       <img src="\${TEMPLATE_CONFIG.desktopImg}" class="ca-desktop-img" alt="Masaüstü Kampanya Bannerı" />
@@ -610,7 +625,7 @@ const getBannerCode = (templateType) => {
     posCSS = 'position: fixed; bottom: 0; left: 0; width: 100%; transform: translateY(100%); transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);';
     showCSS = 'transform: translateY(0);';
   } else if (TEMPLATE_CONFIG.positionMode === 'inline') {
-    posCSS = 'position: relative; width: 100vw !important; max-width: 100vw !important; margin-left: calc(-50vw + 50%) !important; display: block !important; clear: both !important; flex: 0 0 100vw !important; box-sizing: border-box; opacity: 0; transition: opacity 0.4s ease;';
+    posCSS = 'position: relative; width: 100%; max-width: 100%; flex: 0 0 100%; grid-column: 1 / -1; box-sizing: border-box; opacity: 0; transition: opacity 0.4s ease;';
     showCSS = 'opacity: 1;';
   }
 
@@ -664,6 +679,9 @@ const getBannerCode = (templateType) => {
 
   const container = document.createElement('div');
   container.id = 'ca-widget-banner-container';
+  container.setAttribute('data-pos-mode', TEMPLATE_CONFIG.positionMode || 'fixed-top');
+  container.setAttribute('data-inline-target', TEMPLATE_CONFIG.inlineTarget || '');
+  container.setAttribute('data-inline-relation', TEMPLATE_CONFIG.inlineRelation || 'afterend');
   container.innerHTML = \`
     <div class="ca-banner-link" id="ca-cta-link">
       <img src="\${TEMPLATE_CONFIG.desktopImg}" class="ca-desktop-img" alt="Masaüstü Banner" />

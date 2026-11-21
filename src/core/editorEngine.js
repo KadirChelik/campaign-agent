@@ -47,14 +47,14 @@ export const initEditorEngine = (currentSessionId) => {
       if (syncToParent && agentContainer) {
         const inner = agentContainer.innerHTML;
         const cStyle = agentContainer.getAttribute('style') || '';
-        window.parent.postMessage(
+        window.postMessage(
           {
             type: 'PATCH_JS_CODE',
             innerHtml: inner,
             containerStyle: cStyle,
             fullHtml: agentContainer.outerHTML,
           },
-          '*'
+          window.location.origin
         );
       }
 
@@ -92,14 +92,14 @@ export const initEditorEngine = (currentSessionId) => {
     const clone = doc.body.cloneNode(true);
     const agentContainer = clone.querySelector('[id^="ca-widget-"]');
     if (agentContainer) {
-      window.parent.postMessage(
+      window.postMessage(
         {
           type: 'PATCH_JS_CODE',
           innerHtml: agentContainer.innerHTML,
           containerStyle: agentContainer.getAttribute('style') || '',
           fullHtml: agentContainer.outerHTML,
         },
-        '*'
+        window.location.origin
       );
     }
   };
@@ -432,14 +432,14 @@ export const initEditorEngine = (currentSessionId) => {
         });
         const inner = agentContainer.innerHTML;
         const cStyle = agentContainer.getAttribute('style') || '';
-        window.parent.postMessage(
+        window.postMessage(
           {
             type: 'PATCH_JS_CODE',
             innerHtml: inner,
             containerStyle: cStyle,
             fullHtml: agentContainer.outerHTML,
           },
-          '*'
+          window.location.origin
         );
       }
     };
@@ -715,6 +715,21 @@ export const initEditorEngine = (currentSessionId) => {
       } else if (bannerContainer) {
         if (ePosDropdown) ePosDropdown.style.display = 'none';
         if (posDropdown) posDropdown.style.display = 'block';
+        const currentMode =
+          bannerContainer.getAttribute('data-pos-mode') ||
+          (window.getComputedStyle(bannerContainer).position === 'relative' ? 'inline' : 'fixed-top');
+        const currentTarget =
+          bannerContainer.getAttribute('data-inline-target') || '#store-header';
+        const currentRelation =
+          bannerContainer.getAttribute('data-inline-relation') || 'afterend';
+        const modeSelect = mainDoc.getElementById('ca-pos-mode');
+        const inlineBox = mainDoc.getElementById('ca-inline-settings');
+        const targetInput = mainDoc.getElementById('ca-pos-target');
+        const relSelect = mainDoc.getElementById('ca-pos-relation');
+        if (modeSelect) modeSelect.value = currentMode;
+        if (targetInput) targetInput.value = currentTarget;
+        if (relSelect) relSelect.value = currentRelation;
+        if (inlineBox) inlineBox.style.display = currentMode === 'inline' ? 'flex' : 'none';
       } else {
         if (ePosDropdown) ePosDropdown.style.display = 'none';
         if (posDropdown) posDropdown.style.display = 'none';
@@ -1113,7 +1128,7 @@ export const initEditorEngine = (currentSessionId) => {
     };
 
     const applyPositioning = () => {
-      window.parent.postMessage(
+      window.postMessage(
         {
           type: 'UPDATE_CONFIG',
           updates: {
@@ -1122,7 +1137,7 @@ export const initEditorEngine = (currentSessionId) => {
             inlineRelation: posRelEl?.value || 'afterend',
           },
         },
-        '*'
+        window.location.origin
       );
     };
 
@@ -1193,17 +1208,32 @@ export const initEditorEngine = (currentSessionId) => {
     if (pickerBtn) {
       pickerBtn.onclick = (e) => {
         e.stopPropagation();
+
+        if (doc._caPickerOver) doc.removeEventListener('mouseover', doc._caPickerOver);
+        if (doc._caPickerOut) doc.removeEventListener('mouseout', doc._caPickerOut);
+        if (doc._caPickerClick) doc.removeEventListener('click', doc._caPickerClick, true);
+        const existingPickerStyle = doc.getElementById('ca-picker-style-tag');
+        if (existingPickerStyle) existingPickerStyle.remove();
+
+        const isIgnoredTarget = (node) =>
+          !node ||
+          node === doc.documentElement ||
+          node === doc.body ||
+          Boolean(node.closest?.('[id^="ca-widget-"], #ca-campaign-wrapper'));
+
         const handleMouseOver = (ev) => {
           ev.stopPropagation();
+          if (isIgnoredTarget(ev.target)) return;
           ev.target.classList.add('ca-picker-hover');
         };
         const handleMouseOut = (ev) => {
           ev.stopPropagation();
-          ev.target.classList.remove('ca-picker-hover');
+          ev.target.classList?.remove('ca-picker-hover');
         };
         const handleClick = (ev) => {
           ev.preventDefault();
           ev.stopPropagation();
+          if (isIgnoredTarget(ev.target)) return;
           ev.target.classList.remove('ca-picker-hover');
           const selector = getUniqueSelector(ev.target);
           posTargetEl.value = selector;
@@ -1212,14 +1242,21 @@ export const initEditorEngine = (currentSessionId) => {
           doc.removeEventListener('mouseover', handleMouseOver);
           doc.removeEventListener('mouseout', handleMouseOut);
           doc.removeEventListener('click', handleClick, true);
+          doc._caPickerOver = null;
+          doc._caPickerOut = null;
+          doc._caPickerClick = null;
           const pStyle = doc.getElementById('ca-picker-style-tag');
           if (pStyle) pStyle.remove();
         };
 
+        doc._caPickerOver = handleMouseOver;
+        doc._caPickerOut = handleMouseOut;
+        doc._caPickerClick = handleClick;
+
         const pickerStyle = doc.createElement('style');
         pickerStyle.id = 'ca-picker-style-tag';
         pickerStyle.innerHTML =
-          '* { cursor: crosshair !important; } .ca-picker-hover { outline: 3px dashed #ef4444 !important; outline-offset: -3px !important; background: rgba(239,68,68,0.2) !important; transition: none !important; }';
+          '* { cursor: crosshair !important; } [id^="ca-widget-"], [id^="ca-widget-"] * { cursor: not-allowed !important; } .ca-picker-hover { outline: 3px dashed #ef4444 !important; outline-offset: -3px !important; background: rgba(239,68,68,0.2) !important; transition: none !important; }';
         doc.head.appendChild(pickerStyle);
 
         doc.addEventListener('mouseover', handleMouseOver);

@@ -41,7 +41,7 @@ export const patchTemplateConfig = (code, updates = {}) => {
       continue;
     }
 
-    const pattern = new RegExp(`(${field}\\s*:\\s*)(?:(["'\`])[^"'\\n\\r]*\\2|-?\\d+)`);
+    const pattern = new RegExp(`(${field}\\s*:\\s*)(?:(["'\`])(?:\\\\[\\s\\S]|(?!\\2)[^\\n\\r])*\\2|-?\\d+)`);
     if (pattern.test(nextCode)) {
       const serialized = JSON.stringify(String(val));
       nextCode = nextCode.replace(pattern, (_, prefix) => `${prefix}${serialized}`);

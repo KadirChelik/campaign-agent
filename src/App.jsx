@@ -169,13 +169,15 @@ function App() {
   useEffect(() => {
     const handleMessage = (e) => {
       if (!e.data || typeof e.data !== 'object') return;
-      if (e.source !== iframeRef.current?.contentWindow) return;
+      const isFromParentEditor = e.source === window && e.origin === window.location.origin;
+      const isFromPreviewIframe = e.source === iframeRef.current?.contentWindow;
+      if (!isFromParentEditor && !isFromPreviewIframe) return;
 
-      if (e.data.type === 'IFRAME_ERROR') {
+      if (e.data.type === 'IFRAME_ERROR' && isFromPreviewIframe) {
         setIframeError({ message: e.data.message, line: e.data.lineno });
       }
 
-      if (e.data.type === 'UPDATE_CONFIG') {
+      if (e.data.type === 'UPDATE_CONFIG' && isFromParentEditor) {
         isVisualUpdateRef.current = false;
         setSessions((prev) =>
           prev.map((s) => {
@@ -187,9 +189,10 @@ function App() {
             return s;
           })
         );
+        setRefreshKey((prev) => prev + 1);
       }
 
-      if (e.data.type === 'PATCH_JS_CODE') {
+      if (e.data.type === 'PATCH_JS_CODE' && isFromParentEditor) {
         setSessions((prev) =>
           prev.map((s) => {
             if (s.id === currentSessionId) {
